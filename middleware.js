@@ -1,5 +1,3 @@
-import { next } from '@vercel/edge';
-
 export const config = {
   matcher: '/:path*',
 };
@@ -13,6 +11,16 @@ const VIDEOS = {
   },
 };
 
+function redirect302(location) {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: location,
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+    },
+  });
+}
+
 export default function middleware(request) {
   const url = new URL(request.url);
   const cleanPath = url.pathname.replace(/\/+$/, '') || '/';
@@ -20,7 +28,7 @@ export default function middleware(request) {
 
   const video = VIDEOS[cleanPath];
   if (!video) {
-    return Response.redirect('https://www.youtube.com/@Risolvo', 302);
+    return redirect302('https://www.youtube.com/@Risolvo');
   }
 
   // 1. Social link-preview crawlers (Facebook, WhatsApp, X, LinkedIn) get Open Graph HTML
@@ -48,7 +56,7 @@ export default function middleware(request) {
   if (/android/i.test(ua)) {
     const fallback = encodeURIComponent(`https://www.youtube.com/watch?v=${video.id}`);
     const intentUrl = `intent://www.youtube.com/watch?v=${video.id}#Intent;package=com.google.android.youtube;scheme=https;S.browser_fallback_url=${fallback};end`;
-    return Response.redirect(intentUrl, 302);
+    return redirect302(intentUrl);
   }
 
   // 3. iOS devices -> Pure server-side HTTP 302 (zero HTML, zero JavaScript)
@@ -56,12 +64,12 @@ export default function middleware(request) {
     const isMetaInApp = /FBAN|FBAV|Instagram/i.test(ua);
 
     if (isMetaInApp) {
-      return Response.redirect(`youtube://www.youtube.com/watch?v=${video.id}`, 302);
+      return redirect302(`youtube://www.youtube.com/watch?v=${video.id}`);
     }
 
-    return Response.redirect(`https://youtu.be/${video.id}`, 302);
+    return redirect302(`https://youtu.be/${video.id}`);
   }
 
   // 4. Desktop browsers -> Server-side HTTP 302 to standard YouTube watch page
-  return Response.redirect(`https://www.youtube.com/watch?v=${video.id}`, 302);
+  return redirect302(`https://www.youtube.com/watch?v=${video.id}`);
 }
