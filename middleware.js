@@ -58,7 +58,18 @@ export default function middleware(request) {
 
   // 2. Android devices -> Server-side HTTP 302 to Android Intent URI
   if (/android/i.test(ua)) {
-    const fallback = encodeURIComponent(`https://www.youtube.com/watch?v=${video.id}`); const intentUrl = `intent://www.youtube.com/watch?v=${video.id}#Intent;package=com.google.android.youtube;scheme=https;S.browser_fallback_url=${fallback};end`; return redirect302(intentUrl); }  // 3. iOS devices if (/iPhone\vert{}iPad\vert{}iPod/i.test(ua)) { const isMetaInApp = /FBAN\vert{}FBAV\vert{}Instagram/i.test(ua);  if (isMetaInApp) { const appScheme = `vnd.youtube://www.youtube.com/watch?v=${video.id}&v=${video.id}`; const webUrl = `https://www.youtube.com/watch?v=${video.id}`;
+    const fallback = encodeURIComponent(`https://www.youtube.com/watch?v=${video.id}`);
+    const intentUrl = `intent://www.youtube.com/watch?v=${video.id}#Intent;package=com.google.android.youtube;scheme=https;S.browser_fallback_url=${fallback};end`;
+    return redirect302(intentUrl);
+  }
+
+  // 3. iOS devices
+  if (/iPhone|iPad|iPod/i.test(ua)) {
+    const isMetaInApp = /FBAN|FBAV|Instagram/i.test(ua);
+
+    if (isMetaInApp) {
+      const appScheme = `vnd.youtube://www.youtube.com/watch?v=${video.id}&v=${video.id}`;
+      const webUrl = `https://www.youtube.com/watch?v=${video.id}`;
 
       const html = `<!DOCTYPE html>
 <html lang="en">
@@ -75,4 +86,27 @@ export default function middleware(request) {
     }, 2500);
   </script>
 </head>
-<body style="font-family:-apple-system,sans
+<body style="font-family:-apple-system,sans-serif;text-align:center;padding:48px 20px;">
+  <p>Opening YouTube…</p>
+  <p><a id="app-button" href="${appScheme}" style="display:inline-block;padding:12px 24px;background:#ff0000;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">Open In YouTube App</a></p>
+  <p style="margin-top:16px;"><a href="${webUrl}" style="color:#555;font-size:14px;">Continue in browser</a></p>
+</body>
+</html>`;
+
+      return new Response(html, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          Vary: 'User-Agent',
+          'Cache-Control': 'no-cache, no-store',
+        },
+      });
+    }
+
+    // Standard iOS Safari / Chrome -> Direct 302 to Apple Universal Link
+    return redirect302(`https://youtu.be/${video.id}`);
+  }
+
+  // 4. Desktop browsers -> Server-side HTTP 302 to standard YouTube watch page
+  return redirect302(`https://www.youtube.com/watch?v=${video.id}`);
+}
