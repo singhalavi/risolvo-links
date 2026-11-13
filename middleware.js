@@ -63,6 +63,18 @@ const VIDEOS = {
     title: 'Factorising Quadratics When a Is Not 1 | Risolvo',
     description: 'Step-by-step method for factorising quadratics when a is not 1.',
   },
+  '/shorts/ep1': {
+    id: '65S0LRp9rpY',
+    type: 'short',
+    title: 'GCSE Maths Quick Tip #1 | Risolvo',
+    description: 'Quick GCSE Maths revision tip from Risolvo on YouTube Shorts.',
+  },
+  '/shorts/ep2': {
+    id: '8HtDonrzq-0',
+    type: 'short',
+    title: 'GCSE Maths Quick Tip #2 | Risolvo',
+    description: 'Quick GCSE Maths revision tip from Risolvo on YouTube Shorts.',
+  },
 };
 
 export default function middleware(request) {
@@ -74,6 +86,13 @@ export default function middleware(request) {
   if (!video) {
     return Response.redirect('https://www.youtube.com/@Risolvo', 302);
   }
+
+  const isShort = video.type === 'short';
+  const youtubePath = isShort ? `shorts/${video.id}` : `watch?v=${video.id}`;
+  const universalUrl = isShort
+    ? `https://www.youtube.com/shorts/${video.id}`
+    : `https://youtu.be/${video.id}`;
+  const desktopUrl = `https://www.youtube.com/${youtubePath}`;
 
   // 1. Social link-preview crawlers get Open Graph HTML
   if (/facebookexternalhit|Facebot|Twitterbot|WhatsApp|LinkedInBot|Slackbot|TelegramBot/i.test(ua)) {
@@ -101,8 +120,8 @@ export default function middleware(request) {
 
   // 2. Android devices -> Direct server-side 302 to Android Intent URI
   if (/android/i.test(ua)) {
-    const fallback = encodeURIComponent(`https://www.youtube.com/watch?v=${video.id}`);
-    const intentUrl = `intent://www.youtube.com/watch?v=${video.id}#Intent;package=com.google.android.youtube;scheme=https;S.browser_fallback_url=${fallback};end`;
+    const fallback = encodeURIComponent(desktopUrl);
+    const intentUrl = `intent://www.youtube.com/${youtubePath}#Intent;package=com.google.android.youtube;scheme=https;S.browser_fallback_url=${fallback};end`;
     return new Response(null, {
       status: 302,
       headers: {
@@ -120,8 +139,7 @@ export default function middleware(request) {
 
     // 3a. Instagram iOS -> Verified automatic vnd.youtube:// handoff
     if (isInstagram) {
-      const appScheme = `vnd.youtube://www.youtube.com/watch?v=${video.id}`;
-      const webUrl = `https://youtu.be/${video.id}`;
+      const appScheme = `vnd.youtube://www.youtube.com/${youtubePath}`;
       const instaHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -132,14 +150,14 @@ export default function middleware(request) {
     window.location.href = "${appScheme}";
     setTimeout(function() {
       if (!document.hidden) {
-        window.location.replace("${webUrl}");
+        window.location.replace("${universalUrl}");
       }
     }, 1500);
   </script>
 </head>
 <body style="font-family:-apple-system,sans-serif;text-align:center;padding:48px 20px;">
   <p>Opening YouTube…</p>
-  <p><a href="${webUrl}">Tap here to open in YouTube</a></p>
+  <p><a href="${universalUrl}">Tap here to open in YouTube</a></p>
 </body>
 </html>`;
       return new Response(instaHtml, {
@@ -154,7 +172,6 @@ export default function middleware(request) {
 
     // 3b. Facebook iOS -> Universal Link tap-card (triggers native YouTube app on tap)
     if (isFacebookInApp) {
-      const universalUrl = `https://youtu.be/${video.id}`;
       const thumbUrl = `https://i.ytimg.com/vi/${video.id}/maxresdefault.jpg`;
       const fbHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -189,9 +206,9 @@ export default function middleware(request) {
     }
 
     // 3c. Standard iOS Safari / Chrome -> Direct 302 to Apple Universal Link
-    return Response.redirect(`https://youtu.be/${video.id}`, 302);
+    return Response.redirect(universalUrl, 302);
   }
 
-  // 4. Desktop browsers -> Standard YouTube watch page
-  return Response.redirect(`https://www.youtube.com/watch?v=${video.id}`, 302);
+  // 4. Desktop browsers -> Standard YouTube watch or shorts page
+  return Response.redirect(desktopUrl, 302);
 }
