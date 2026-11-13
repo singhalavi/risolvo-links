@@ -1,0 +1,7 @@
+{
+  "name": "risolvo-links",
+  "private": true,
+  "dependencies": {
+    "@vercel/edge": "^1.1.2"
+  }
+}
