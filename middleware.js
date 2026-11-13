@@ -12,6 +12,13 @@ const VIDEOS = {
 
 const noStore = { 'cache-control': 'no-store', vary: 'user-agent' };
 
+function redirect(location) {
+  return new Response(null, {
+    status: 302,
+    headers: { Location: location, ...noStore },
+  });
+}
+
 export default function middleware(request) {
   const url = new URL(request.url);
   const cleanPath = url.pathname.replace(/\/+$/, '') || '/';
@@ -19,7 +26,7 @@ export default function middleware(request) {
 
   const video = VIDEOS[cleanPath];
   if (!video) {
-    return Response.redirect('https://www.youtube.com/@Risolvo', 302);
+    return redirect('https://www.youtube.com/@Risolvo');
   }
 
   const webUrl = `https://www.youtube.com/watch?v=${video.id}`;
@@ -47,4 +54,19 @@ export default function middleware(request) {
   const isInApp = /FBAN|FBAV|FB_IAB|FB4A|Instagram/i.test(ua);
 
   // 2. In-app browsers: plain https lets Meta hand off to the YouTube app
-  if (isInApp &&
+  if (isInApp && (isAndroid || isIOS)) {
+    return redirect(webUrl);
+  }
+
+  // 3. Regular mobile browsers
+  if (isAndroid) {
+    const intentUrl =
+      `intent://www.youtube.com/watch?v=${video.id}#Intent;package=com.google.android.youtube;scheme=https;` +
+      `S.browser_fallback_url=${encodeURIComponent(webUrl)};end`;
+    return redirect(intentUrl);
+  }
+  if (isIOS) return redirect(`https://youtu.be/${video.id}`);
+
+  // 4. Desktop
+  return redirect(webUrl);
+}
