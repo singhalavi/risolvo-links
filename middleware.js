@@ -1,84 +1,95 @@
-// middleware.js — watch.risolvo.co.uk
-// Maps short links -> YouTube video IDs, and serves a
-// deep-link interstitial for Meta/Instagram in-app browsers.
-import { NextResponse } from 'next/server';
-
-// Add every lesson here: path -> YouTube video ID
-const VIDEOS = {
-  '/sigfig/ep1': '6u5QBmIT9wY',   // Significant Figures Made Easy
-  '/sigfig/ep2': 'hYG_I-CgfLQ',   // Estimation Made Easy
-  '/sigfig/ep3': '8qr8mw7VwcM',   // Trailing Zero Problem
-  '/sigfig/ep4': 'gQrNCJL3bvc',   // Error Intervals Explained
-  '/sigfig/ep5': 'pU5hd98szEI',   // Bounds in Calculations
-  '/surds/ep6': 'FGoVDExhaIA',    // Simplifying Surds
-  '/surds/ep7': '_OSzPiSjn30',    // Adding & Subtracting Surds
-  '/surds/ep8': '22T1mKQrbf8',    // Expanding Brackets with Surds
-  '/surds/ep9': 'WVWZ3GauFgo',    // Rationalising the Surds
-  '/quad/ep10': 'EFzuUALejXY',    // Intro to Quadratic Expressions
-  '/quad/ep11': 'CdLxA-gTdOE',    // Factorising When a = 1
-  '/quad/ep12': 'W_lf8d02eAs',    // Factorising When a Is Not 1
-};
-
-function interstitialHtml(videoId, title) {
-  const webUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const appUrl = `youtube://watch?v=${videoId}`;
-  // Android intent URL — opens the YouTube app directly
-  const intentUrl =
-    `intent://www.youtube.com/watch?v=${videoId}` +
-    `#Intent;scheme=https;package=com.google.android.youtube;` +
-    `S.browser_fallback_url=${encodeURIComponent(webUrl)};end`;
-
-  return `<!doctype html>
-<html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Opening in YouTube…</title>
-<style>
-  body { font-family: system-ui, sans-serif; background: #0B2032;
-    color: #fff; text-align: center; padding: 48px 24px; margin: 0; }
-  h1 { font-size: 22px; margin: 0 0 8px; }
-  p { color: #cbd5e1; font-size: 15px; }
-  a.btn { display: block; margin: 32px auto 16px; padding: 16px 24px;
-    background: #FF6A00; color: #fff; font-size: 18px; font-weight: 700;
-    border-radius: 12px; text-decoration: none; max-width: 320px; }
-  a.web { color: #93c5fd; font-size: 14px; }
-</style></head>
-<body>
-  <h1>Opening in the YouTube app…</h1>
-  <p>If it doesn't open automatically, tap below.</p>
-  <a class="btn" href="${appUrl}">Open in YouTube app</a>
-  <a class="web" href="${webUrl}">Watch on the web instead</a>
-  <script>
-    // 1. Try the YouTube app scheme (iOS + Android)
-    window.location = "${appUrl}";
-    // 2. Android: try the intent URL a beat later
-    setTimeout(function () { window.location = "${intentUrl}"; }, 400);
-    // 3. Fallback: web YouTube after 2.5s if the app didn't open
-    setTimeout(function () { window.location = "${webUrl}"; }, 2500);
-  </script>
-</body></html>`;
-}
-
-export function middleware(request) {
-  const { pathname } = request.nextUrl;
-  const key = pathname.replace(/\/$/, ''); // trailing slash optional
-  const videoId = VIDEOS[key];
-  if (!videoId) return NextResponse.next();
-
-  const ua = request.headers.get('user-agent') || '';
-  const isMeta = /FBAN|FBAV|Instagram/i.test(ua);
-  const webUrl = `https://www.youtube.com/watch?v=${videoId}`;
-
-  // Normal browsers: YouTube's own app-links already work,
-  // so a plain redirect is fine.
-  if (!isMeta) return NextResponse.redirect(webUrl);
-
-  // Meta / Instagram in-app browser: serve the interstitial
-  // page that attempts the app deep link.
-  return new Response(interstitialHtml(videoId, key), {
-    headers: { 'content-type': 'text/html; charset=utf-8' },
-  });
-}
+import { next } from '@vercel/edge';
 
 export const config = {
-  matcher: ['/sigfig/:path*', '/surds/:path*', '/quad/:path*'],
+  matcher: '/:path*',
 };
+
+const VIDEOS = {
+  '/sigfig/ep1': {
+    id: '6u5QBmIT9wY',
+    title: 'Significant Figures — GCSE Maths Walkthrough | Risolvo',
+    description: 'Watch the step-by-step GCSE Maths walkthrough on Significant Figures on YouTube.',
+  },
+};
+
+export default function middleware(request) {
+  const url = new URL(request.url);
+  const cleanPath = url.pathname.replace(/\/+$/, '') || '/';
+  const ua = request.headers.get('user-agent') || '';
+
+  const video = VIDEOS[cleanPath];
+  if (!video) {
+    return Response.redirect('https://www.youtube.com/@Risolvo', 302);
+  }
+
+  // 1. Social link-preview crawlers get Open Graph HTML
+  if (/facebookexternalhit|Facebot|Twitterbot|WhatsApp|LinkedInBot|Slackbot|TelegramBot/i.test(ua)) {
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${video.title}</title>
+  <meta property="og:type" content="video.other">
+  <meta property="og:title" content="${video.title}">
+  <meta property="og:description" content="${video.description}">
+  <meta property="og:url" content="https://watch.risolvo.co.uk${cleanPath}">
+  <meta property="og:image" content="https://i.ytimg.com/vi/${video.id}/maxresdefault.jpg">
+</head>
+<body></body>
+</html>`;
+    return new Response(html, {
+      status: 200,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    });
+  }
+
+  // 2. Android devices -> Server-side 302 to Android Intent URI
+  if (/android/i.test(ua)) {
+    const fallback = encodeURIComponent(`https://www.youtube.com/watch?v=${video.id}`);
+    const intentUrl = `intent://www.youtube.com/watch?v=${video.id}#Intent;package=com.google.android.youtube;scheme=https;S.browser_fallback_url=${fallback};end`;
+    return Response.redirect(intentUrl, 302);
+  }
+
+  // 3. iOS devices: split Meta In-App Browser (FBAN/FBAV/Instagram) from regular Safari/Chrome
+  if (/iPhone|iPad|iPod/i.test(ua)) {
+    const isMetaInApp = /FBAN|FBAV|Instagram/i.test(ua);
+
+    if (isMetaInApp) {
+      // Meta's iOS WKWebView intercepts 302 https://youtu.be internally;
+      // serve a zero-render custom-scheme launch + m.youtube.com fallback for users without the app
+      const inAppHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opening YouTube…</title>
+  <script>
+    window.location.href = "youtube://www.youtube.com/watch?v=${video.id}";
+    setTimeout(function() {
+      if (!document.hidden) {
+        window.location.replace("https://m.youtube.com/watch?v=${video.id}");
+      }
+    }, 1500);
+  </script>
+</head>
+<body style="font-family:-apple-system,sans-serif;text-align:center;padding:48px 20px;">
+  <p>Opening YouTube…</p>
+  <p><a href="youtube://www.youtube.com/watch?v=${video.id}">Tap here to open in YouTube</a></p>
+</body>
+</html>`;
+      return new Response(inAppHtml, {
+        status: 200,
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'no-store',
+        },
+      });
+    }
+
+    // Standard iOS Safari / Chrome -> Direct 302 to Apple Universal Link
+    return Response.redirect(`https://youtu.be/${video.id}`, 302);
+  }
+
+  // 4. Desktop browsers -> Standard YouTube watch page
+  return Response.redirect(`https://www.youtube.com/watch?v=${video.id}`, 302);
+}
