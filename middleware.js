@@ -1,35 +1,28 @@
 import { next } from '@vercel/edge';
 
 export const config = {
-  // Run on all paths under watch.risolvo.co.uk
   matcher: '/:path*',
 };
 
-// Add future videos here: clean slug -> YouTube 11-char video ID
 const VIDEOS = {
   '/sigfig/ep1': {
     id: '6u5QBmIT9wY',
     title: 'Significant Figures — GCSE Maths Walkthrough | Risolvo',
     description: 'Watch the step-by-step GCSE Maths walkthrough on Significant Figures on YouTube.',
   },
-  // Example for future episodes:
-  // '/sigfig/ep2': { id: 'NEXT_VIDEO_ID', title: '...', description: '...' },
 };
 
 export default function middleware(request) {
   const url = new URL(request.url);
-  // Normalize trailing slashes so both /sigfig/ep1 and /sigfig/ep1/ match
   const cleanPath = url.pathname.replace(/\/+$/, '') || '/';
   const ua = request.headers.get('user-agent') || '';
 
   const video = VIDEOS[cleanPath];
-
-  // Fallback to your main YouTube channel if someone visits watch.risolvo.co.uk/ or an unknown slug
   if (!video) {
     return Response.redirect('https://www.youtube.com/@Risolvo', 302);
   }
 
-  // 1. Social link-preview bots (Facebook, WhatsApp, X, LinkedIn) get Open Graph HTML
+  // 1. Social link-preview crawlers get Open Graph HTML
   if (/facebookexternalhit|Facebot|Twitterbot|WhatsApp|LinkedInBot|Slackbot|TelegramBot/i.test(ua)) {
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -57,8 +50,43 @@ export default function middleware(request) {
     return Response.redirect(intentUrl, 302);
   }
 
-  // 3. iOS devices -> Server-side 302 to Apple Universal Link (youtu.be)
+  // 3. iOS devices: split Meta In-App Browser (FBAN/FBAV/Instagram) from regular Safari/Chrome
   if (/iPhone|iPad|iPod/i.test(ua)) {
+    const isMetaInApp = /FBAN|FBAV|Instagram/i.test(ua);
+
+    if (isMetaInApp) {
+      // Meta's iOS WKWebView intercepts 302 https://youtu.be internally;
+      // serve a zero-render custom-scheme launch + m.youtube.com fallback for users without the app
+      const inAppHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opening YouTube…</title>
+  <script>
+    window.location.href = "youtube://www.youtube.com/watch?v=${video.id}";
+    setTimeout(function() {
+      if (!document.hidden) {
+        window.location.replace("https://m.youtube.com/watch?v=${video.id}");
+      }
+    }, 1500);
+  </script>
+</head>
+<body style="font-family:-apple-system,sans-serif;text-align:center;padding:48px 20px;">
+  <p>Opening YouTube…</p>
+  <p><a href="youtube://www.youtube.com/watch?v=${video.id}">Tap here to open in YouTube</a></p>
+</body>
+</html>`;
+      return new Response(inAppHtml, {
+        status: 200,
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'no-store',
+        },
+      });
+    }
+
+    // Standard iOS Safari / Chrome -> Direct 302 to Apple Universal Link
     return Response.redirect(`https://youtu.be/${video.id}`, 302);
   }
 
