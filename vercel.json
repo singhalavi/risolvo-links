@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/sigfig/ep2",
+      "destination": "https://www.youtube.com/watch?v=6u5QBmIT9wY",
+      "permanent": false
+    }
+  ]
+}
