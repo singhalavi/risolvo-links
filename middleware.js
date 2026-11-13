@@ -16,6 +16,7 @@ function redirect302(location) {
     status: 302,
     headers: {
       Location: location,
+      Vary: 'User-Agent',
       'Cache-Control': 'no-store, no-cache, must-revalidate',
     },
   });
@@ -48,7 +49,10 @@ export default function middleware(request) {
 </html>`;
     return new Response(html, {
       status: 200,
-      headers: { 'content-type': 'text/html; charset=utf-8' },
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        Vary: 'User-Agent',
+      },
     });
   }
 
@@ -59,14 +63,47 @@ export default function middleware(request) {
     return redirect302(intentUrl);
   }
 
-  // 3. iOS devices -> Pure server-side HTTP 302 (zero HTML, zero JavaScript)
+  // 3. iOS devices
   if (/iPhone|iPad|iPod/i.test(ua)) {
     const isMetaInApp = /FBAN|FBAV|Instagram/i.test(ua);
 
     if (isMetaInApp) {
-      return redirect302(`youtube://www.youtube.com/watch?v=${video.id}`);
+      // Exact URLgenius FBAN/Instagram iOS payload using vnd.youtube://
+      const appScheme = `vnd.youtube://www.youtube.com/watch?v=${video.id}&v=${video.id}`;
+      const webUrl = `https://www.youtube.com/watch?v=${video.id}`;
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opening YouTube…</title>
+  <script>
+    window.location = "${appScheme}";
+    setTimeout(function() {
+      if (!document.hidden) {
+        window.location = "${webUrl}";
+      }
+    }, 500);
+  </script>
+</head>
+<body style="font-family:-apple-system,sans-serif;text-align:center;padding:48px 20px;">
+  <p>Opening YouTube…</p>
+  <p><a id="app-button" href="${appScheme}">Open In App</a></p>
+</body>
+</html>`;
+
+      return new Response(html, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          Vary: 'User-Agent',
+          'Cache-Control': 'no-cache, no-store',
+        },
+      });
     }
 
+    // Standard iOS Safari / Chrome -> Direct 302 to Apple Universal Link
     return redirect302(`https://youtu.be/${video.id}`);
   }
 
