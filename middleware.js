@@ -84,7 +84,7 @@ export default function middleware(request) {
 
   const video = VIDEOS[cleanPath];
   if (!video) {
-    return Response.redirect('https://www.youtube.com/@Risolvo', 302);
+    return Response.redirect('https://www.youtube.com/@Risolvo?sub_confirmation=1', 302);
   }
 
   const isShort = video.type === 'short';
